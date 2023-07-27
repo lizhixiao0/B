@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
+import torch
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from torch import nn
+
 from model import WeatherDateEmbedded
 
 
@@ -12,11 +15,18 @@ class WeatherDataPreprocessor(object):
         self.load_data()
         self.scaler = MinMaxScaler()
         # self.scaler = StandardScaler() # 均值归一或者标准化归一
+
+
         self.data, self.raw_data, self.mean = self.preprocess_data()
         self.window_data, self.y_index = self._split_window(self.data, 7, 1, 1)  # 获得窗口化的数据
-        self.Embedded = WeatherDateEmbedded()
+
+
 
     def load_data(self):
+        """
+        加载数据集
+        Returns: 加载到self.data
+        """
         # 读取CSV文件
         encodings = ['gbk', 'utf-8', 'latin-1', 'ISO-8859-1', 'cp1252']
         for encoding in encodings:
@@ -59,12 +69,13 @@ class WeatherDataPreprocessor(object):
 
         # 归一化特征
         feature_columns = ['风速（m/15min）', '温度（℃）', '辐照度（W/m2）', '风向', '降雨（mm）', '气压（P）']
-
         features, means = self.mean_normalize(features, feature_columns)
 
-        date_feature = self.Embedded(self.data['year', 'month', 'day', 'hour'])
-
-        features['year', 'month', 'day', 'hour'] = date_feature
+        # 日期特征嵌入
+        # d = self.data[['year', 'month', 'day', 'hour']]
+        # date_feature = self.Embedded(self.data[['year', 'month', 'day', 'hour']])
+        #
+        # features['year', 'month', 'day', 'hour'] = date_feature
 
         # 返回处理后的特征和目标变量作为模型输入
         return features, np.asarray(target), means
@@ -122,3 +133,33 @@ class WeatherDataPreprocessor(object):
         """
         denormalized_data = normalized_data * (normalized_data.max() - normalized_data.min()) + means
         return denormalized_data
+
+    @staticmethod
+    def get_batches(inputs, targets, batch_size, shuffle=False, device='cpu'):
+        """
+        获取batch数据的函数，类似DataLoader里封装的函数，这里不过是自己手写的。
+        :param inputs: X 数据集的输入
+        :param targets: Y 数据集的labels
+        :param batch_size: batch_size 大小
+        :param shuffle: True用于打乱数据集，每次都会以不同的顺序返回
+        :param device: 使用设备
+        :return: 返回batch块大小的数据
+        """
+        inputs = torch.from_numpy(inputs).to(torch.float32)
+        targets = torch.from_numpy(targets).to(torch.float32)
+        length = len(inputs)  # 输入集的长度
+        if shuffle:
+            index = torch.randperm(length)  # torch.randperm(n)：将0~n-1（包括0和n-1）随机打乱后获得的数字序列，函数名是random permutation缩写
+        else:
+            index = torch.LongTensor(range(length))
+        start_idx = 0
+        while start_idx < length - batch_size:
+            end_idx = min(length, start_idx + batch_size)  # 取一个batch块的数据，到最后不够了就取到最后一个值
+            excerpt = index[start_idx:end_idx]  # 一个batch大小的数据
+            X = inputs[excerpt]
+            Y = targets[excerpt]
+            # if cuda:
+            X = X.cuda()
+            Y = Y.cuda()
+            yield X, Y
+            start_idx += batch_size
