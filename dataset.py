@@ -56,7 +56,7 @@ class WeatherDataPreprocessor(object):
         # 将日期列转换为Datetime类型
         self.data['timestamp'] = pd.to_datetime(self.data['timestamp'])
         # 添加新的变量 年份，月份，日，小时
-        self.data['year'] = self.data['timestamp'].dt.year
+        self.data['year'] = self.data['timestamp'].dt.year-2020
         self.data['month'] = self.data['timestamp'].dt.month
         self.data['day'] = self.data['timestamp'].dt.day
         self.data['hour'] = self.data['timestamp'].dt.hour

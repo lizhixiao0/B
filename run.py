@@ -62,14 +62,14 @@ def train_model(model, dataset, criterion, optimizer, num_epochs, batch_size, va
                 dataset.get_batches(dataset.window_data[0], dataset.window_data[1], batch_size=batch_size, shuffle=True,
                                     ), total=len(dataset.window_data[0]) // batch_size):
             optimizer.zero_grad()
-
-            outputs = model(X, X)
+            Y = Y[:, 0:6]
+            outputs = model(X)
             loss = criterion(outputs, Y)
             loss.backward()
             optimizer.step()
 
         # 在每5个epoch后进行一次验证
-        validate_every_n_epoch(model, dataset, criterion, batch_size, device, epoch, validate_interval)
+        validate_every_n_epoch(model, dataset, criterion, batch_size, 'cuda', epoch, validate_interval)
 
         end_time = time.time()
         if (epoch + 1) % 1 == 0:

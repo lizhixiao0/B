@@ -22,7 +22,7 @@ para = parser.parse_known_args()[0]
 
 dataset = WeatherDataPreprocessor(para)
 device='cuda'
-model = WeatherPredict( input_dim=26, output_dim=64, d_model=4*24, nhead=2, num_encoder_layers=2, num_decoder_layers=2)
+model = WeatherPredict( input_dim=32, output_dim=6, max_seq_len=7*24,nhead=2, num_encoder_layers=2, num_decoder_layers=2)
 
 # 定义损失函数和优化器
 criterion = nn.MSELoss()
