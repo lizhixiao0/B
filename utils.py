@@ -17,8 +17,8 @@ def evaluate_forecast(y_true, y_pred):
     y_pred = np.array(y_pred)
 
     # Calculate MAE, MSE, and RMSE
-    mae = np.mean(np.abs(y_true - y_pred))
-    mse = np.mean((y_true - y_pred) ** 2)
+    mae = np.mean(np.abs(y_true - y_pred), axis=0)
+    mse = np.mean((y_true - y_pred) ** 2, axis=0)
     rmse = np.sqrt(mse)
 
     return mae, mse, rmse

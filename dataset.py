@@ -4,8 +4,6 @@ import torch
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from torch import nn
 
-from model import WeatherDateEmbedded
-
 
 class WeatherDataPreprocessor(object):
     def __init__(self, para):
@@ -16,11 +14,8 @@ class WeatherDataPreprocessor(object):
         self.scaler = MinMaxScaler()
         # self.scaler = StandardScaler() # 均值归一或者标准化归一
 
-
-        self.data, self.raw_data, self.mean = self.preprocess_data()
-        self.window_data, self.y_index = self._split_window(self.data, 7, 1, 1)  # 获得窗口化的数据
-
-
+        self.data, self.raw_data, self.mean, self.max_min = self.preprocess_data()
+        self.window_data, self.y_index = self._split_window(self.data, 4 * 24, 1, 1)  # 获得窗口化的数据
 
     def load_data(self):
         """
@@ -56,20 +51,21 @@ class WeatherDataPreprocessor(object):
         # 将日期列转换为Datetime类型
         self.data['timestamp'] = pd.to_datetime(self.data['timestamp'])
         # 添加新的变量 年份，月份，日，小时
-        self.data['year'] = self.data['timestamp'].dt.year-2020
+        self.data['year'] = self.data['timestamp'].dt.year - 2020
         self.data['month'] = self.data['timestamp'].dt.month
         self.data['day'] = self.data['timestamp'].dt.day
         self.data['hour'] = self.data['timestamp'].dt.hour
+        self.data['minute'] = self.data['timestamp'].dt.minute
         # 提取特征和目标变量
 
         features = self.data[
-            ['风速（m/15min）', '温度（℃）', '辐照度（W/m2）', '风向', '降雨（mm）', '气压（P）', 'year', 'month', 'day', 'hour']]
+            ['风速（m/15min）', '温度（℃）', '辐照度（W/m2）', '风向', '气压', 'year', 'month', 'day', 'hour']]
 
-        target = self.data[['风速（m/15min）', '温度（℃）', '辐照度（W/m2）', '风向', '降雨（mm）', '气压（P）']]
+        target = self.data[['风速（m/15min）', '温度（℃）', '辐照度（W/m2）', '风向', '气压']]
 
         # 归一化特征
-        feature_columns = ['风速（m/15min）', '温度（℃）', '辐照度（W/m2）', '风向', '降雨（mm）', '气压（P）']
-        features, means = self.mean_normalize(features, feature_columns)
+        feature_columns = ['风速（m/15min）', '温度（℃）', '辐照度（W/m2）', '风向', '气压']
+        features, means, max_min = self.mean_normalize(features, feature_columns)
 
         # 日期特征嵌入
         # d = self.data[['year', 'month', 'day', 'hour']]
@@ -78,7 +74,7 @@ class WeatherDataPreprocessor(object):
         # features['year', 'month', 'day', 'hour'] = date_feature
 
         # 返回处理后的特征和目标变量作为模型输入
-        return features, np.asarray(target), means
+        return features, np.asarray(target), means, max_min
 
     @staticmethod
     def _split_window(data, window, horizon, window_step):
@@ -116,23 +112,36 @@ class WeatherDataPreprocessor(object):
         """
 
         means = data[feature_columns].mean()  # 计算前6个特征的均值
+        imax = data[feature_columns].max()
+        imin = data[feature_columns].min()
+        max_min = imax - imin
         normalized_data = (data[feature_columns] - means) / (
                 data[feature_columns].max() - data[feature_columns].min())  # 均值归一化
         data[feature_columns] = normalized_data  # 更新原始数据集中的前6个特征
-        return data, means
 
-    @staticmethod
-    def denormalize_data(normalized_data, means):
+        return data, means, max_min
+
+    def denormalize_data(self, normalized_data):
         """
         均值还原函数
         Args:
             normalized_data : 均值归一化后的数据集。
-            means : 包含每个特征的均值。
         Returns:
             denormalized_data: 还原后的数据集。
         """
-        denormalized_data = normalized_data * (normalized_data.max() - normalized_data.min()) + means
-        return denormalized_data
+        if isinstance(normalized_data, torch.Tensor):
+            normalized_data = normalized_data.cpu().detach().numpy()
+        means = self.mean.values
+        max_min = self.max_min.values
+        raw_data = normalized_data * max_min + means
+        # _, length = normalized_data.shape
+        # raw_data = np.ones((_, length))
+        # for i in range(length):
+        #     imax = np.max(normalized_data[:, i])
+        #     imin = np.min(normalized_data[:, i])
+        #     raw_data[:, i] = normalized_data[:, i] * (imax - imin) + means[i]
+
+        return raw_data
 
     @staticmethod
     def get_batches(inputs, targets, batch_size, shuffle=False, device='cpu'):
@@ -159,7 +168,7 @@ class WeatherDataPreprocessor(object):
             X = inputs[excerpt]
             Y = targets[excerpt]
             # if cuda:
-            X = X.cuda()
-            Y = Y.cuda()
+            X = X.to(device)
+            Y = Y.to(device)
             yield X, Y
             start_idx += batch_size
